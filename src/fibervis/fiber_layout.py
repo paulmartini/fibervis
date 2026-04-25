@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
-from typing import Dict, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.axes import Axes
-from matplotlib.patches import Circle
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
 
 
 @dataclass(frozen=True)
@@ -176,6 +177,59 @@ class IFULayout:
             data["dec_deg"] = sky[:, 1]
         return data
 
+    def coordinate_columns(
+        self,
+        center_ra: Optional[float] = None,
+        center_dec: Optional[float] = None,
+    ) -> Dict[str, np.ndarray]:
+        """Return coordinate columns in either local or sky coordinates.
+
+        If both ``center_ra`` and ``center_dec`` are provided, output
+        coordinates are returned as ``ra_deg`` and ``dec_deg``. If neither is
+        provided, output coordinates are returned as ``x_arcsec`` and
+        ``y_arcsec``.
+        """
+
+        has_ra = center_ra is not None
+        has_dec = center_dec is not None
+        if has_ra != has_dec:
+            raise ValueError("center_ra and center_dec must be provided together.")
+
+        if has_ra and has_dec:
+            sky = self.sky_coordinates(center_ra=center_ra, center_dec=center_dec)
+            return {"ra_deg": sky[:, 0], "dec_deg": sky[:, 1]}
+
+        offsets = self.offsets()
+        return {"x_arcsec": offsets[:, 0], "y_arcsec": offsets[:, 1]}
+
+    def csv_columns(
+        self,
+        center_ra: Optional[float] = None,
+        center_dec: Optional[float] = None,
+    ) -> Dict[str, np.ndarray]:
+        """Return columnar data for CSV export of the fiber layout."""
+
+        data = {
+            "fiber_id": np.arange(self.n_fibers),
+            "fiber_diameter_arcsec": np.full(self.n_fibers, self.fiber_diameter, dtype=float),
+        }
+        data.update(self.coordinate_columns(center_ra=center_ra, center_dec=center_dec))
+        return data
+
+    def csv_rows(
+        self,
+        center_ra: Optional[float] = None,
+        center_dec: Optional[float] = None,
+    ) -> List[Dict[str, float]]:
+        """Return per-fiber rows for CSV export."""
+
+        data = self.csv_columns(center_ra=center_ra, center_dec=center_dec)
+        fieldnames = list(data.keys())
+        return [
+            {fieldname: data[fieldname][row_index] for fieldname in fieldnames}
+            for row_index in range(self.n_fibers)
+        ]
+
     def write_csv(
         self,
         csv_path: str,
@@ -195,7 +249,11 @@ class IFULayout:
             ``n_fibers`` elements.
         """
 
-        data = self.as_dict(include_sky=include_sky)
+        data = self.csv_columns(
+            center_ra=self.center_ra if include_sky else None,
+            center_dec=self.center_dec if include_sky else None,
+        )
+        data["distance_arcsec"] = np.hypot(self.offsets()[:, 0], self.offsets()[:, 1])
         if extra_columns:
             for key, values in extra_columns.items():
                 if len(values) != self.n_fibers:
@@ -211,12 +269,15 @@ class IFULayout:
 
     def plot(
         self,
-        ax: Optional[Axes] = None,
+        ax: Optional["Axes"] = None,
         fiber_kwargs: Optional[Dict[str, object]] = None,
         fov_kwargs: Optional[Dict[str, object]] = None,
         show_stats: bool = True,
-    ) -> Tuple[plt.Figure, Axes]:
+    ) -> Tuple["Figure", "Axes"]:
         """Plot the IFU layout in local arcsecond coordinates."""
+
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Circle
 
         if ax is None:
             fig, ax = plt.subplots(figsize=(9, 9))
