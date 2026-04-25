@@ -436,11 +436,11 @@ def _scaled_area(area_arcsec2: float) -> Tuple[float, str]:
     """Scale square arcseconds to a readable angular-area unit."""
 
     if area_arcsec2 <= 3600.0:
-        return area_arcsec2, "arcsec^2"
+        return area_arcsec2, r"arcsec$^2$"
 
     area = area_arcsec2 / 3600.0
     if area <= 3600.0:
-        return area, "arcmin^2"
+        return area, r"arcmin$^2$"
 
-    return area / 3600.0, "deg^2"
+    return area / 3600.0, r"deg$^2$"
 
