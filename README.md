@@ -64,6 +64,16 @@ python bin/write_fiber_layout.py ifu_sky.csv \
 When `--center-ra` and `--center-dec` are provided together, the output
 coordinate columns are `ra_deg` and `dec_deg`.
 
+Create an RGB fiber overlay PNG from a Legacy Survey FITS cutout and a fiber
+CSV. By default, the plot includes a stats box in the upper-left corner:
+
+```bash
+python bin/fiber_overlay.py \
+  --center-ra 125.1886 \
+  --center-dec 19.3622 \
+  cutout_125.1885_19.3626.fits ifu_sky.csv ifu_overlay.png
+```
+
 ## Legacy Survey Cutouts
 
 Download matching JPEG and FITS cutouts from the Legacy Survey viewer:

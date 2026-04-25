@@ -25,6 +25,7 @@ class LayoutMetrics:
     n_fibers: int
     fiber_radius: float
     pitch: float
+    separation_ratio: float
     fov_radius: float
     active_area: float
     fov_area: float
@@ -37,7 +38,7 @@ class LayoutMetrics:
 
         return (
             f"Total Fibers: {self.n_fibers}\n"
-            f"Pitch: {self.pitch:.3g} arcsec\n"
+            f"Separation: {self.separation_ratio:.3g} x Dia\n"
             f"FOV Radius: {self.fov_radius:.2f} arcsec\n"
             f"Fill Factor: {self.fill_factor:.1%}\n"
             f"Total Area: {self.total_area:.1f} {self.total_area_units}"
@@ -153,6 +154,7 @@ class IFULayout:
             n_fibers=self.n_fibers,
             fiber_radius=self.fiber_radius,
             pitch=self.pitch,
+            separation_ratio=self.separation_ratio,
             fov_radius=fov_radius,
             active_area=active_area,
             fov_area=fov_area,
@@ -373,6 +375,61 @@ def design_fiber_spectrograph(
         layout.plot()
         plt.show()
     return layout
+
+
+def metrics_from_offsets(offsets: np.ndarray, fiber_diameter: float) -> LayoutMetrics:
+    """Compute :class:`LayoutMetrics` from fiber center offsets.
+
+    Parameters
+    ----------
+    offsets
+        Fiber center coordinates as an ``(N, 2)`` array in arcseconds.
+    fiber_diameter
+        Fiber diameter in arcseconds.
+    """
+
+    coordinates = np.asarray(offsets, dtype=float)
+    if coordinates.ndim != 2 or coordinates.shape[1] != 2:
+        raise ValueError("offsets must be an (N, 2) array.")
+    if len(coordinates) == 0:
+        raise ValueError("offsets must contain at least one fiber.")
+    if fiber_diameter <= 0:
+        raise ValueError("fiber_diameter must be positive.")
+
+    fiber_radius = 0.5 * fiber_diameter
+    distances = np.hypot(coordinates[:, 0], coordinates[:, 1])
+    fov_radius = float(np.max(distances)) + fiber_radius
+    active_area = len(coordinates) * np.pi * fiber_radius**2
+    fov_area = np.pi * fov_radius**2
+    total_area, total_area_units = _scaled_area(active_area)
+
+    pitch = _infer_pitch(coordinates)
+    separation_ratio = pitch / fiber_diameter
+
+    return LayoutMetrics(
+        n_fibers=len(coordinates),
+        fiber_radius=fiber_radius,
+        pitch=pitch,
+        separation_ratio=separation_ratio,
+        fov_radius=fov_radius,
+        active_area=active_area,
+        fov_area=fov_area,
+        fill_factor=active_area / fov_area,
+        total_area=total_area,
+        total_area_units=total_area_units,
+    )
+
+
+def _infer_pitch(offsets: np.ndarray) -> float:
+    """Infer nearest-neighbor pitch from an ``(N, 2)`` coordinate array."""
+
+    if len(offsets) < 2:
+        return 0.0
+
+    deltas = offsets[:, None, :] - offsets[None, :, :]
+    distances = np.hypot(deltas[:, :, 0], deltas[:, :, 1])
+    distances[distances == 0.0] = np.inf
+    return float(np.min(distances))
 
 
 def _scaled_area(area_arcsec2: float) -> Tuple[float, str]:

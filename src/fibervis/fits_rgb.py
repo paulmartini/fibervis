@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional, Sequence, Tuple, Union
+import csv
+from pathlib import Path
+import warnings
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
 from astropy.visualization import make_lupton_rgb
-from astropy.wcs import WCS
+from astropy.wcs import FITSFixedWarning, WCS
 from astropy.wcs.utils import proj_plane_pixel_scales
 from matplotlib.axes import Axes
 from matplotlib.patches import Circle
 
-from .fiber_layout import IFULayout
+from .fiber_layout import IFULayout, metrics_from_offsets
 
 BandSpec = Union[int, str]
 
@@ -89,6 +92,102 @@ def save_rgb_png(
     rgb, _ = make_rgb_from_fits(fits_path, **rgb_kwargs)
     plt.imsave(output_path, rgb)
     return rgb
+
+
+def make_dr2_rgb_from_fits(
+    fits_path: str,
+    g: BandSpec = 0,
+    r: BandSpec = 1,
+    z: BandSpec = 2,
+    image_hdu: BandSpec = 0,
+) -> Tuple[np.ndarray, fits.Header]:
+    """Read a FITS file and return a Legacy Survey DR2-style RGB image."""
+
+    with fits.open(fits_path) as hdul:
+        header = hdul[image_hdu].header.copy()
+        g_img = _read_channel(hdul, g, image_hdu=image_hdu)
+        r_img = _read_channel(hdul, r, image_hdu=image_hdu)
+        z_img = _read_channel(hdul, z, image_hdu=image_hdu)
+
+    rgb = dr2_rgb([g_img, r_img, z_img], ["g", "r", "z"])
+    return rgb, header
+
+
+def save_csv_fiber_overlay_png(
+    fits_path: str,
+    csv_path: str,
+    output_path: str,
+    center_ra: Optional[float] = None,
+    center_dec: Optional[float] = None,
+    fiber_edgecolor: str = "white",
+    fiber_facecolor: str = "none",
+    fiber_alpha: float = 0.6,
+    fiber_linewidth: float = 0.8,
+    figsize: Tuple[float, float] = (8.0, 8.0),
+    dpi: int = 150,
+    title: Optional[str] = None,
+    show_stats: bool = True,
+    image_hdu: BandSpec = 0,
+    g: BandSpec = 0,
+    r: BandSpec = 1,
+    z: BandSpec = 2,
+) -> Tuple[plt.Figure, Axes]:
+    """Create a DR2 RGB PNG with fiber circles from a CSV coordinate table."""
+
+    rows = read_fiber_csv(csv_path)
+    rgb, header = make_dr2_rgb_from_fits(fits_path, g=g, r=r, z=z, image_hdu=image_hdu)
+    center = resolve_overlay_center(rows, center_ra=center_ra, center_dec=center_dec)
+    extent = image_extent_arcsec(header, center[0], center[1], rgb.shape[:2])
+
+    offsets = fiber_offsets_arcsec(
+        rows,
+        center_ra=center[0],
+        center_dec=center[1],
+    )
+    x_arcsec = offsets[:, 0]
+    y_arcsec = offsets[:, 1]
+    radii_arcsec = fiber_radii_arcsec(rows)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.imshow(rgb, origin="lower", extent=extent)
+
+    for x_coord, y_coord, radius_arcsec in zip(x_arcsec, y_arcsec, radii_arcsec):
+        ax.add_patch(
+            Circle(
+                (x_coord, y_coord),
+                radius_arcsec,
+                edgecolor=fiber_edgecolor,
+                facecolor=fiber_facecolor,
+                alpha=fiber_alpha,
+                linewidth=fiber_linewidth,
+            )
+        )
+
+    ax.set_xlabel(r"$\Delta$ RA (arcsec)")
+    ax.set_ylabel(r"$\Delta$ Dec (arcsec)")
+    if title is None:
+        title = f"Fiber Overlay ({len(rows)} fibers)"
+    ax.set_title(title)
+
+    if show_stats:
+        diameter = float(np.nanmedian([row["fiber_diameter_arcsec"] for row in rows]))
+        metrics = metrics_from_offsets(offsets, fiber_diameter=diameter)
+        ax.text(
+            0.05,
+            0.95,
+            metrics.stats_text(),
+            transform=ax.transAxes,
+            fontsize=14,
+            verticalalignment="top",
+            bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.9},
+        )
+
+    fig.tight_layout()
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=dpi)
+    return fig, ax
 
 
 def save_fiber_overlay_png(
@@ -187,7 +286,7 @@ def image_extent_arcsec(
 ) -> Tuple[float, float, float, float]:
     """Return matplotlib image extent in arcseconds from a sky center."""
 
-    wcs = WCS(header).celestial
+    wcs = _celestial_wcs(header)
     center_x, center_y = wcs.world_to_pixel_values(center_ra, center_dec)
     pixel_scale = mean_pixel_scale_arcsec(header)
     image_height, image_width = image_shape
@@ -203,9 +302,99 @@ def image_extent_arcsec(
 def mean_pixel_scale_arcsec(header: fits.Header) -> float:
     """Return the mean celestial pixel scale in arcseconds per pixel."""
 
-    wcs = WCS(header).celestial
+    wcs = _celestial_wcs(header)
     pixel_scales_deg = np.abs(proj_plane_pixel_scales(wcs))
     return float(np.mean(pixel_scales_deg) * 3600.0)
+
+
+def read_fiber_csv(csv_path: str) -> List[Dict[str, float]]:
+    """Read a fiber-coordinate CSV file into numeric row dictionaries."""
+
+    with open(csv_path, "r", newline="", encoding="utf-8") as file_obj:
+        reader = csv.DictReader(file_obj)
+        rows: List[Dict[str, float]] = []
+        for row in reader:
+            converted: Dict[str, float] = {}
+            for key, value in row.items():
+                if value is None:
+                    continue
+                converted[key] = float(value)
+            rows.append(converted)
+
+    if not rows:
+        raise ValueError("Fiber CSV is empty.")
+    if "fiber_diameter_arcsec" not in rows[0]:
+        raise ValueError("Fiber CSV must include 'fiber_diameter_arcsec'.")
+    return rows
+
+
+def resolve_overlay_center(
+    rows: Sequence[Dict[str, float]],
+    center_ra: Optional[float] = None,
+    center_dec: Optional[float] = None,
+) -> Tuple[float, float]:
+    """Resolve overlay center coordinates for CSV-driven overlays."""
+
+    has_ra = center_ra is not None
+    has_dec = center_dec is not None
+    if has_ra != has_dec:
+        raise ValueError("center_ra and center_dec must be provided together.")
+    if has_ra and has_dec:
+        return float(center_ra), float(center_dec)
+
+    first_row = rows[0]
+    has_sky = "ra_deg" in first_row and "dec_deg" in first_row
+    has_offsets = "x_arcsec" in first_row and "y_arcsec" in first_row
+
+    if has_offsets:
+        raise ValueError(
+            "center_ra and center_dec are required when CSV has x_arcsec/y_arcsec."
+        )
+    if not has_sky:
+        raise ValueError("Fiber CSV must contain either (ra_deg, dec_deg) or (x_arcsec, y_arcsec).")
+
+    if "fiber_id" in first_row:
+        center_row = min(rows, key=lambda row: row["fiber_id"])
+        return center_row["ra_deg"], center_row["dec_deg"]
+
+    ra_values = np.array([row["ra_deg"] for row in rows], dtype=float)
+    dec_values = np.array([row["dec_deg"] for row in rows], dtype=float)
+    return float(np.median(ra_values)), float(np.median(dec_values))
+
+
+def fiber_offsets_arcsec(
+    rows: Sequence[Dict[str, float]],
+    center_ra: float,
+    center_dec: float,
+) -> np.ndarray:
+    """Convert fiber coordinates from CSV rows into arcsecond offsets."""
+
+    first_row = rows[0]
+    has_sky = "ra_deg" in first_row and "dec_deg" in first_row
+    has_offsets = "x_arcsec" in first_row and "y_arcsec" in first_row
+
+    if has_sky:
+        ra = np.array([row["ra_deg"] for row in rows], dtype=float)
+        dec = np.array([row["dec_deg"] for row in rows], dtype=float)
+        cos_dec = np.cos(np.radians(center_dec))
+        if np.isclose(cos_dec, 0.0):
+            raise ValueError("RA offsets are undefined at the celestial poles.")
+        x_arcsec = (ra - center_ra) * 3600.0 * cos_dec
+        y_arcsec = (dec - center_dec) * 3600.0
+        return np.column_stack((x_arcsec, y_arcsec))
+    if has_offsets:
+        x_arcsec = np.array([row["x_arcsec"] for row in rows], dtype=float)
+        y_arcsec = np.array([row["y_arcsec"] for row in rows], dtype=float)
+        return np.column_stack((x_arcsec, y_arcsec))
+
+    raise ValueError("Fiber CSV must contain either (ra_deg, dec_deg) or (x_arcsec, y_arcsec).")
+
+
+def fiber_radii_arcsec(rows: Sequence[Dict[str, float]]) -> np.ndarray:
+    """Return per-fiber radius in arcseconds from arcsecond diameters."""
+
+    diameters_arcsec = np.array([row["fiber_diameter_arcsec"] for row in rows], dtype=float)
+    return 0.5 * diameters_arcsec
 
 
 def _read_channel(
@@ -225,6 +414,14 @@ def _read_channel(
     if np.ndim(channel_data) != 2:
         raise ValueError(f"HDU {band!r} must contain a 2-D image.")
     return np.asarray(channel_data, dtype=float)
+
+
+def _celestial_wcs(header: fits.Header) -> WCS:
+    """Create a celestial WCS while silencing benign FITS auto-fix warnings."""
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FITSFixedWarning)
+        return WCS(header).celestial
 
 
 def _channel_minimum(
