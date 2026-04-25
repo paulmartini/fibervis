@@ -251,3 +251,63 @@ def _resolve_center(
         raise ValueError("center_ra and center_dec are required for FITS overlays.")
     return ra, dec
 
+def sdss_rgb(imgs, bands, scales=None,
+             m=0.02, Q=20):
+    '''
+      *imgs*:   list of 2-d numpy arrays of image pixels (float)
+      *bands*:  list of strings with the band names, eg ['g', 'r',' 'z']
+      *scales*: dict from band name to (plane, scale), where *plane* is the RGB plane,
+                and *scale* multiplies the image pixels
+      *m*:      float, an offset added so that pixels containing 0.0 map to a gray value
+                rather than black.
+      *Q*:      arcsinh scaling value (larger = stronger stretch)
+
+      Returns: H x W x 3 RGB array, floating-point, between 0.0 and 1.0.
+
+      This is from https://github.com/legacysurvey/imagine/blob/17056890452a5769869d779a55b1487877532e5d/map/views.py#L5993
+    '''
+    
+    import numpy as np
+    rgbscales = {'u': (2,1.5), #1.0,
+                 'g': (2,2.5),
+                 'r': (1,1.5),
+                 'i': (0,1.0),
+                 'z': (0,0.4), #0.3
+                 }
+    if scales is not None:
+        rgbscales.update(scales)
+
+    I = 0
+    for img,band in zip(imgs, bands):
+        plane,scale = rgbscales[band]
+        img = np.maximum(0, img * scale + m)
+        I = I + img
+    I /= len(bands)
+
+    Q = 20
+    fI = np.arcsinh(Q * I) / np.sqrt(Q)
+    I += (I == 0.) * 1e-6
+    H,W = I.shape
+    rgb = np.zeros((H,W,3), np.float32)
+    for img,band in zip(imgs, bands):
+        plane,scale = rgbscales[band]
+        rgb[:,:,plane] = (img * scale + m) * fI / I
+
+    # We saturate to white, while the original SDSS (Lupton et al) color mapping
+    # saturates to the color of the object... more scientifically informative, but
+    # some say, not as pretty.
+    # Can do the SDSS version with something along these lines:
+    # # maxrgb = reduce(np.maximum, [R,G,B])
+    # # J = (maxrgb > 1.)
+    # # R[J] = R[J]/maxrgb[J]
+    # # G[J] = G[J]/maxrgb[J]
+    # # B[J] = B[J]/maxrgb[J]
+    # rgb = np.dstack((R,G,B))
+        
+    rgb = np.clip(rgb, 0, 1)
+    return rgb
+
+def dr2_rgb(rimgs, bands, **ignored):
+    ''' also from legacysurvey code in views.py '''
+    return sdss_rgb(rimgs, bands, scales=dict(g=(2,6.0), r=(1,3.4), z=(0,2.2)), m=0.03)
+
