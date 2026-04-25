@@ -2,6 +2,8 @@
 
 Tools for computing and visualizing IFU fiber systems.
 
+![Carousel Lens overlay example](carousel.png)
+
 ## Modules
 
 - `src/fibervis/fiber_layout.py` computes hexagonal IFU fiber layouts,
@@ -21,12 +23,14 @@ command:
 python bin/fiber_overlay.py \
   --get-fits \
   --write-layout \
-  --center-ra 125.1886 \
-  --center-dec 19.3622 \
+  --center-ra 90.9854 \
+  --center-dec -35.9683 \
   --n-fibers 567 \
   --fiber-diameter 1.0 \
-  --separation-ratio 1.1 \
-  cutout_125.1886_19.3622.fits ifu_layout.csv ifu_overlay.png
+  --separation-ratio 1.5 \
+  carousel.fits ifu_layout.csv carousel.png \
+  --overwrite \
+  --title "Carousel Lens"
 ```
 
 Render an overlay PNG from an existing FITS cutout and layout CSV:
