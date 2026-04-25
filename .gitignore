@@ -1,0 +1,26 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+Exercises/.env
+
+# API keys and secrets
+*_api_key.txt
+secrets/
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.pytest_cache/
+
+# Editor / IDE
+.virtual_documents/
+.cursor/
+
+# OS
+.DS_Store
+
+# Input and output files
+*.fits
+*.png
