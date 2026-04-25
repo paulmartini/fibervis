@@ -9,73 +9,13 @@ Tools for computing and visualizing IFU fiber systems.
   projections.
 - `src/fibervis/fits_rgb.py` builds Lupton RGB images from FITS cubes or
   multi-extension FITS files, overlays an IFU layout, and writes PNG output.
+- `src/fibervis/legacy_tools.py` provides Legacy Survey cutout URL and
+  download helpers shared by command-line scripts.
 
-## Examples
+## Command-Line Examples
 
-```python
-from fibervis import IFULayout
-from fibervis.fits_rgb import save_fiber_overlay_png
-
-layout = IFULayout(
-    n_fibers=567,
-    fiber_diameter=1.0,
-    separation_ratio=1.1,
-    center_ra=125.1886,
-    center_dec=19.3622,
-)
-
-print(layout.metrics())
-layout.write_csv("ifu_coords.csv")
-
-save_fiber_overlay_png(
-    "cutout.fits",
-    "ifu_overlay.png",
-    layout,
-    red=2,
-    green=1,
-    blue=0,
-    scales=(1.0, 1.5, 2.5),
-    q=10,
-    stretch=0.2,
-)
-```
-
-Write a layout CSV from the command line:
-
-```bash
-python bin/write_fiber_layout.py ifu_offsets.csv \
-  --n-fibers 567 \
-  --fiber-diameter 1.0 \
-  --separation-ratio 1.1
-```
-
-When no center is provided, the output coordinate columns are `x_arcsec` and
-`y_arcsec`, measured relative to `(0, 0)` at the IFU center.
-
-```bash
-python bin/write_fiber_layout.py ifu_sky.csv \
-  --n-fibers 567 \
-  --fiber-diameter 1.0 \
-  --separation-ratio 1.1 \
-  --center-ra 125.1886 \
-  --center-dec 19.3622
-```
-
-When `--center-ra` and `--center-dec` are provided together, the output
-coordinate columns are `ra_deg` and `dec_deg`.
-
-Create an RGB fiber overlay PNG from a Legacy Survey FITS cutout and a fiber
-CSV. By default, the plot includes a stats box in the upper-left corner:
-
-```bash
-python bin/fiber_overlay.py \
-  --center-ra 125.1886 \
-  --center-dec 19.3622 \
-  cutout_125.1885_19.3626.fits ifu_sky.csv ifu_overlay.png
-```
-
-You can generate the FITS cutout, generate the fiber CSV, and render the
-overlay in one command:
+Generate the FITS cutout, write the fiber CSV, and render the overlay in one
+command:
 
 ```bash
 python bin/fiber_overlay.py \
@@ -89,12 +29,70 @@ python bin/fiber_overlay.py \
   cutout_125.1886_19.3622.fits ifu_layout.csv ifu_overlay.png
 ```
 
-## Legacy Survey Cutouts
+Render an overlay PNG from an existing FITS cutout and layout CSV:
+
+```bash
+python bin/fiber_overlay.py \
+  --center-ra 125.1886 \
+  --center-dec 19.3622 \
+  cutout_125.1885_19.3626.fits ifu_sky.csv ifu_overlay.png
+```
 
 Download matching JPEG and FITS cutouts from the Legacy Survey viewer:
 
 ```bash
-python get_legacy.py 125.1885 19.3626 -o cutout_125.1885_19.3626
+python bin/get_legacy.py 125.1885 19.3626 -o cutout_125.1885_19.3626
+```
+
+Write a layout CSV with arcsecond offsets (`x_arcsec`, `y_arcsec`) relative to
+the layout center:
+
+```bash
+python bin/write_fiber_layout.py ifu_offsets.csv \
+  --n-fibers 567 \
+  --fiber-diameter 1.0 \
+  --separation-ratio 1.1
+```
+
+Write a layout CSV with sky coordinates (`ra_deg`, `dec_deg`):
+
+```bash
+python bin/write_fiber_layout.py ifu_sky.csv \
+  --n-fibers 567 \
+  --fiber-diameter 1.0 \
+  --separation-ratio 1.1 \
+  --center-ra 125.1886 \
+  --center-dec 19.3622
+```
+
+## Python Package Example
+
+Import from `fibervis` and build a reusable layout-driven overlay workflow:
+
+```python
+from fibervis import IFULayout
+from fibervis.fits_rgb import save_fiber_overlay_png
+from fibervis.legacy_tools import download_cutout_file
+
+center_ra = 125.1886
+center_dec = 19.3622
+
+layout = IFULayout(
+    n_fibers=567,
+    fiber_diameter=1.0,
+    separation_ratio=1.1,
+    center_ra=center_ra,
+    center_dec=center_dec,
+)
+
+download_cutout_file(
+    center_ra,
+    center_dec,
+    file_type="fits",
+    output_path="cutout.fits",
+)
+layout.write_csv("ifu_sky.csv", include_sky=True)
+save_fiber_overlay_png("cutout.fits", "ifu_overlay.png", layout)
 ```
 
 Existing files are skipped by default. Add `--overwrite` to replace them.
