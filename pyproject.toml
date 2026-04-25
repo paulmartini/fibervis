@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fibervis"
+version = "0.1.0"
+description = "Tools for visualizing fiber systems for astronomical spectrographs"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Paul Martini" }
+]
+keywords = ["astronomy", "spectrograph", "fiber", "visualization"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.22",
+    "matplotlib>=3.5",
+    "scipy>=1.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
