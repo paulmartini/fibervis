@@ -10,7 +10,7 @@ Tools for computing and visualizing IFU fiber systems.
 - `src/fibervis/fits_rgb.py` builds Lupton RGB images from FITS cubes or
   multi-extension FITS files, overlays an IFU layout, and writes PNG output.
 
-## Example
+## Examples
 
 ```python
 from fibervis import IFULayout
@@ -39,6 +39,30 @@ save_fiber_overlay_png(
     stretch=0.2,
 )
 ```
+
+Write a layout CSV from the command line:
+
+```bash
+python bin/write_fiber_layout.py ifu_offsets.csv \
+  --n-fibers 567 \
+  --fiber-diameter 1.0 \
+  --separation-ratio 1.1
+```
+
+When no center is provided, the output coordinate columns are `x_arcsec` and
+`y_arcsec`, measured relative to `(0, 0)` at the IFU center.
+
+```bash
+python bin/write_fiber_layout.py ifu_sky.csv \
+  --n-fibers 567 \
+  --fiber-diameter 1.0 \
+  --separation-ratio 1.1 \
+  --center-ra 125.1886 \
+  --center-dec 19.3622
+```
+
+When `--center-ra` and `--center-dec` are provided together, the output
+coordinate columns are `ra_deg` and `dec_deg`.
 
 ## Legacy Survey Cutouts
 
