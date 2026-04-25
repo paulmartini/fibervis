@@ -39,3 +39,13 @@ save_fiber_overlay_png(
     stretch=0.2,
 )
 ```
+
+## Legacy Survey Cutouts
+
+Download matching JPEG and FITS cutouts from the Legacy Survey viewer:
+
+```bash
+python get_legacy.py 125.1885 19.3626 -o cutout_125.1885_19.3626
+```
+
+Existing files are skipped by default. Add `--overwrite` to replace them.
