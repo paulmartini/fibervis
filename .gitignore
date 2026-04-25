@@ -23,4 +23,6 @@ __pycache__/
 
 # Input and output files
 *.fits
+*.jpg
+*.jpeg
 *.png
