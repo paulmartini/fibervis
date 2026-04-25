@@ -74,6 +74,21 @@ python bin/fiber_overlay.py \
   cutout_125.1885_19.3626.fits ifu_sky.csv ifu_overlay.png
 ```
 
+You can generate the FITS cutout, generate the fiber CSV, and render the
+overlay in one command:
+
+```bash
+python bin/fiber_overlay.py \
+  --get-fits \
+  --write-layout \
+  --center-ra 125.1886 \
+  --center-dec 19.3622 \
+  --n-fibers 567 \
+  --fiber-diameter 1.0 \
+  --separation-ratio 1.1 \
+  cutout_125.1886_19.3622.fits ifu_layout.csv ifu_overlay.png
+```
+
 ## Legacy Survey Cutouts
 
 Download matching JPEG and FITS cutouts from the Legacy Survey viewer:
